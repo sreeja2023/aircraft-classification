@@ -2,17 +2,9 @@
 {
   "name": "aircraft-classification",
   "private": true,
-  "workspaces": [
-    "se_fullstack/backend",
-    "se_fullstack/frontend"
-  ],
   "scripts": {
-    "install:backend": "npm install --prefix se_fullstack/backend",
-    "install:frontend": "npm install --prefix se_fullstack/frontend",
-    "install:all": "npm run install:backend && npm run install:frontend",
-    "build:frontend": "npm run build --prefix se_fullstack/frontend",
-    "build": "npm run install:all && npm run build:frontend",
+    "build:frontend": "npm install --prefix se_fullstack/frontend && npm run build --prefix se_fullstack/frontend",
+    "build": "npm run build:frontend",
     "start": "node se_fullstack/backend/server.js"
   }
 }
-
