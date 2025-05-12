@@ -1,143 +1,206 @@
-// src/components/PredictPage.jsx
-import React, { useState, useEffect } from "react";
-import axios from "axios";
-import "./PredictPage.css";
+.white-box {
+  background: linear-gradient(to bottom, white, #c3d8ee);
+  width: 90vw;
+  max-width: 900px;
+  min-height: 400px;
+  padding: 2rem;
+  border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+  margin: 2rem auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
 
-const API_BASE =
-  process.env.NODE_ENV === "production" ? "" : "http://localhost:5000";
+.box-header.logo-only {
+  width: 100%;
+  margin-bottom: 1.5rem;
+}
 
-export default function PredictPage() {
-  const [file, setFile] = useState(null);
-  const [preview, setPreview] = useState(null);
-  const [error, setError] = useState("");
-  const [result, setResult] = useState("");
-  const [history, setHistory] = useState([]);
+.logo {
+  font-size: 1.75rem;
+  font-weight: bold;
+  color: #0b3d91;
+}
 
-  // Load past predictions on mount
-  useEffect(() => {
-    axios
-      .get(`${API_BASE}/history`)
-      .then((res) => setHistory(res.data))
-      .catch((_) => {
-        /* ignore */
-      });
-  }, []);
+.box-body {
+  text-align: center;
+  width: 100%;
+  margin-bottom: 2rem;
+}
 
-  // When user selects a file, generate preview URL
-  function handleFileChange(e) {
-    const f = e.target.files[0];
-    if (!f) return;
-    setFile(f);
-    setPreview(URL.createObjectURL(f));
-    setResult("");
-    setError("");
+.box-body h1 {
+  font-size: 2.5rem;
+  color: #0b3d91;
+}
+
+.box-body p {
+  font-size: 1.1rem;
+  color: #444;
+}
+
+.upload-form {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 600px;
+  gap: 1rem;
+}
+
+.drop-box {
+  background-color: #f9fbff;
+  border: 2px dashed #0b3d91;
+  padding: 2rem;
+  border-radius: 12px;
+  color: #0b3d91;
+  font-weight: 500;
+  cursor: pointer;
+  width: 100%;
+  min-height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.3s, border-color 0.3s;
+}
+
+.drop-box:hover {
+  background-color: #e6f0ff;
+  border-color: #072c6c;
+}
+
+.preview-image {
+  max-width: 100%;
+  max-height: 300px;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.submit-btn {
+  background-color: #0b3d91;
+  color: white;
+  font-weight: bold;
+  padding: 0.75rem 2rem;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.3s, transform 0.3s;
+  width: 100%;
+  max-width: 200px;
+}
+
+.submit-btn:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+.submit-btn:hover:not(:disabled) {
+  background-color: #072c6c;
+  transform: translateY(-2px);
+}
+
+.error-message {
+  margin-top: 1rem;
+  color: #dc3545;
+  background-color: #f8d7da;
+  border: 1px solid #f5c6cb;
+  padding: 0.75rem;
+  border-radius: 8px;
+  width: 100%;
+  max-width: 600px;
+  text-align: center;
+}
+
+.prediction-result {
+  margin: 2rem 0;
+  padding: 1.5rem;
+  background-color: #e8f4ff;
+  border-radius: 8px;
+  width: 100%;
+  max-width: 600px;
+  text-align: center;
+}
+
+.prediction-result h3 {
+  color: #0b3d91;
+  margin-bottom: 0.5rem;
+}
+
+.result-text {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: #072c6c;
+}
+
+/* History */
+
+.history-box {
+  background: linear-gradient(to bottom, #ffffff, #dbeeff);
+  width: 90vw;
+  max-width: 1100px;
+  margin: 2rem auto;
+  padding: 1.5rem 2rem;
+  border-radius: 12px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
+}
+
+.history-box h2 {
+  color: #0b3d91;
+  font-size: 1.4rem;
+  text-align: center;
+  margin-bottom: 1.5rem;
+}
+
+.history-table-container {
+  overflow-x: auto;
+}
+
+.history-box table {
+  width: 100%;
+  border-collapse: collapse;
+  background-color: white;
+}
+
+.history-box th,
+.history-box td {
+  text-align: left;
+  padding: 1rem;
+  border-bottom: 1px solid #eee;
+}
+
+.history-box th {
+  background-color: #f2f8fc;
+  font-weight: bold;
+  color: #0b3d91;
+}
+
+.history-box tr:last-child td {
+  border-bottom: none;
+}
+
+.history-box tr:hover {
+  background-color: #f8fbff;
+}
+
+.history-img {
+  width: 80px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .white-box, .history-box {
+    width: 95vw;
+    padding: 1.5rem;
   }
-
-  // Upload and predict
-  function handleSubmit(e) {
-    e.preventDefault();
-    if (!file) {
-      setError("Please select an image first.");
-      return;
-    }
-    setError("");
-    const form = new FormData();
-    form.append("image", file);
-
-    axios
-      .post(`${API_BASE}/upload`, form, {
-        headers: { "Content-Type": "multipart/form-data" },
-      })
-      .then((res) => {
-        const record = res.data.data;
-        setResult(record.result);
-        setHistory((h) => [record, ...h]);
-      })
-      .catch((err) => {
-        console.error(err);
-        setError("Upload failed, please try again.");
-      });
+  .box-body h1 {
+    font-size: 2rem;
   }
-
-  return (
-    <>
-      <div className="white-box">
-        <div className="box-header logo-only">
-          <span className="logo">✈️ Aerial Vehicle Detector</span>
-        </div>
-        <div className="box-body">
-          <h1>Snap. Upload. Detect</h1>
-          <p>Upload an image to classify it as Military, Civilian, UAV or Unknown</p>
-        </div>
-
-        <form className="upload-form" onSubmit={handleSubmit}>
-          <label className="drop-box">
-            {preview ? (
-              <img src={preview} className="preview-image" alt="preview" />
-            ) : (
-              <>
-                📁<br />
-                Drop an image here or click to upload
-              </>
-            )}
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handleFileChange}
-              style={{ display: "none" }}
-            />
-          </label>
-
-          <button
-            type="submit"
-            className="submit-btn"
-            disabled={!file}
-          >
-            🚀 Predict
-          </button>
-        </form>
-
-        {error && <div className="error-message">{error}</div>}
-
-        {result && (
-          <div className="prediction-result">
-            <h3>Result</h3>
-            <div className="result-text">{result}</div>
-          </div>
-        )}
-      </div>
-
-      {history.length > 0 && (
-        <div className="history-box">
-          <h2>Past Predictions</h2>
-          <div className="history-table-container">
-            <table>
-              <thead>
-                <tr>
-                  <th>Image</th>
-                  <th>Result</th>
-                  <th>When</th>
-                </tr>
-              </thead>
-              <tbody>
-                {history.map((r) => (
-                  <tr key={r._id}>
-                    <td>
-                      <img
-                        src={`${API_BASE}/${r.imagePath}`}
-                        className="history-img"
-                        alt="uploaded"
-                      />
-                    </td>
-                    <td>{r.result}</td>
-                    <td>{new Date(r.timestamp).toLocaleString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-    </>
-  );
+  .history-img {
+    width: 60px;
+    height: 60px;
+  }
 }
