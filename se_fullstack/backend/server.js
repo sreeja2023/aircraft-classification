@@ -1,79 +1,5 @@
-/*const express = require('express');
-const multer = require('multer');
-const { spawn } = require('child_process');
-const mongoose = require('mongoose');
-const path = require('path');
-const cors = require('cors');
-
-
-
-// MongoDB Setup
-mongoose.connect('mongodb://localhost:27017/yolo_predictions', {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-});
-
-const predictionSchema = new mongoose.Schema({
-  imagePath: String,
-  result: String,
-  timestamp: { type: Date, default: Date.now }
-});
-
-const Prediction = mongoose.model('Prediction', predictionSchema);
-
-// Express App Setup
-const app = express();
-const PORT = 3000;
-
-app.use(cors());
-// Multer Storage Setup
-const storage = multer.diskStorage({
-  destination: './uploads/',
-  filename: function (req, file, cb) {
-    cb(null, 'uploaded_' + Date.now() + path.extname(file.originalname));
-  }
-});
-const upload = multer({ storage });
-
-// Route to Upload and Predict
-app.post('/upload', upload.single('image'), (req, res) => {
-  const imgPath = req.file.path;
-
-  const python = spawn('python', ['pred.py', imgPath]);
-
-  let prediction = '';
-  python.stdout.on('data', (data) => {
-    prediction += data.toString();
-  });
-
-  python.stderr.on('data', (data) => {
-    console.error(`stderr: ${data}`);
-  });
-
-  python.on('close', async (code) => {
-    try {
-      const newPrediction = new Prediction({
-        imagePath: imgPath,
-        result: prediction.trim()
-      });
-      await newPrediction.save();
-      res.send({
-        message: "Prediction saved",
-        data: newPrediction
-      });
-    } catch (err) {
-      res.status(500).send({ error: "Database save failed", details: err });
-    }
-  });
-});
-
-// Start Server
-app.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}`);
-});
-
-*/
-
+// server.js
+require('dotenv').config();
 const express = require('express');
 const multer = require('multer');
 const { spawn } = require('child_process');
@@ -81,78 +7,81 @@ const mongoose = require('mongoose');
 const path = require('path');
 const cors = require('cors');
 
-// MongoDB Setup
-mongoose.connect('mongodb://localhost:27017/yolo_predictions', {
+// ─── Environment ───────────────────────────────────────────────────────────────
+const PORT = process.env.PORT || 5000;
+const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/yolo_predictions';
+
+// ─── MongoDB Setup ─────────────────────────────────────────────────────────────
+mongoose.connect(MONGO_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true
-});
+})
+.then(() => console.log('MongoDB connected:', MONGO_URI))
+.catch(err => console.error('MongoDB connection error:', err));
 
+// ─── Mongoose Schema ───────────────────────────────────────────────────────────
 const predictionSchema = new mongoose.Schema({
   imagePath: String,
   result: String,
   timestamp: { type: Date, default: Date.now }
 });
-
 const Prediction = mongoose.model('Prediction', predictionSchema);
 
-// Express App Setup
+// ─── Express App ───────────────────────────────────────────────────────────────
 const app = express();
-const PORT = 5000;
-
 app.use(cors());
 app.use(express.json());
 
-// Multer Storage Setup
+// ─── Multer Setup ──────────────────────────────────────────────────────────────
+const uploadDir = path.join(__dirname, 'uploads');
 const storage = multer.diskStorage({
-  destination: './uploads/',
-  filename: function (req, file, cb) {
-    cb(null, 'uploaded_' + Date.now() + path.extname(file.originalname));
+  destination: uploadDir,
+  filename: (req, file, cb) => {
+    const name = 'uploaded_' + Date.now() + path.extname(file.originalname);
+    cb(null, name);
   }
 });
 const upload = multer({ storage });
 
-// Route to Upload and Predict
+// ─── Prediction Route ──────────────────────────────────────────────────────────
 app.post('/upload', upload.single('image'), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded' });
+  }
+
   const imgPath = req.file.path;
+  const py = spawn('python', ['pred.py', imgPath]);
 
-  const python = spawn('python', ['pred.py', imgPath]);
+  let output = '';
+  py.stdout.on('data', data => (output += data.toString()));
+  py.stderr.on('data', data => console.error(`Python error: ${data}`));
 
-  let prediction = '';
-  python.stdout.on('data', (data) => {
-    prediction += data.toString();
-  });
-
-  python.stderr.on('data', (data) => {
-    console.error(`stderr: ${data}`);
-  });
-
-  python.on('close', async (code) => {
+  py.on('close', async code => {
     if (code !== 0) {
-      return res.status(500).send({ error: `Python script exited with code ${code}` });
+      return res.status(500).json({ error: `Python exited with code ${code}` });
     }
 
+    const cleaned = output.replace(/^Detections:\s*/i, '').trim();
     try {
-      // Clean up "Detections: " prefix if present
-      const cleanedPrediction = prediction.replace(/^Detections:\s*/i, '').trim();
-
-      const newPrediction = new Prediction({
-        imagePath: imgPath,
-        result: cleanedPrediction
-      });
-
-      await newPrediction.save();
-
-      res.send({
-        message: "Prediction saved",
-        data: newPrediction
-      });
+      const record = await Prediction.create({ imagePath: imgPath, result: cleaned });
+      res.json({ message: 'Prediction saved', data: record });
     } catch (err) {
-      res.status(500).send({ error: "Database save failed", details: err });
+      console.error('DB save error:', err);
+      res.status(500).json({ error: 'Failed to save prediction', details: err });
     }
   });
 });
 
-// Start Server
+// ─── (Optional) Serve React in Production ────────────────────────────────────────
+if (process.env.NODE_ENV === 'production') {
+  const clientBuild = path.join(__dirname, '../frontend/build');
+  app.use(express.static(clientBuild));
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(clientBuild, 'index.html'));
+  });
+}
+
+// ─── Start Server ───────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}`);
+  console.log(`Server running on http://localhost:${PORT}`);
 });
