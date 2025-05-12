@@ -19,14 +19,6 @@ mongoose.connect(MONGO_URI, {
 .then(() => console.log('MongoDB connected:', MONGO_URI))
 .catch(err => console.error('MongoDB connection error:', err));
 
-// ─── Mongoose Schema ───────────────────────────────────────────────────────────
-const predictionSchema = new mongoose.Schema({
-  imagePath: String,
-  result: String,
-  timestamp: { type: Date, default: Date.now }
-});
-const Prediction = mongoose.model('Prediction', predictionSchema);
-
 // ─── Express App ───────────────────────────────────────────────────────────────
 const app = express();
 app.use(cors());
@@ -72,7 +64,7 @@ app.post('/upload', upload.single('image'), (req, res) => {
   });
 });
 
-// ─── (Optional) Serve React in Production ────────────────────────────────────────
+// ─── Serve React in Production ─────────────────────────────────────────────────
 if (process.env.NODE_ENV === 'production') {
   const clientBuild = path.join(__dirname, '../frontend/build');
   app.use(express.static(clientBuild));
@@ -83,5 +75,5 @@ if (process.env.NODE_ENV === 'production') {
 
 // ─── Start Server ───────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+  console.log(`Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
 });
