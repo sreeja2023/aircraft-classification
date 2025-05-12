@@ -1,99 +1,107 @@
 // server.js
 require('dotenv').config();
+
 const express = require('express');
-const multer  = require('multer');
-const { spawn } = require('child_process');
-const path    = require('path');
-const cors    = require('cors');
-const { Pool } = require('pg');
+const path = require('path');
+const mongoose = require('mongoose');
+const multer = require('multer');
+const cors = require('cors');
+const { spawnSync } = require('child_process');
 
-// ─── PICK A PORT ────────────────────────────────────────────────────────────────
-// Locally: always 5000.  In production: use the RENDER‐supplied PORT env var.
-const PORT =
-  process.env.NODE_ENV === 'production'
-    ? Number(process.env.PORT)
-    : 5000;
+// ─── CONFIG ────────────────────────────────────────────────────────────────────
+const PORT = parseInt(process.env.PORT, 10) || 5000;
 
-// ─── DATABASE URL CHECK ──────────────────────────────────────────────────────────
-const DATABASE_URL = process.env.DATABASE_URL;
-if (!DATABASE_URL) {
-  console.error('❌  DATABASE_URL environment variable is required');
+// On Render, set this in Dashboard → your service → Environment:
+//   Key:   DATABASE_URL
+//   Value: postgresql://…your-credentials…@…/your_db
+const MONGO_URI = process.env.DATABASE_URL;
+if (!MONGO_URI) {
+  console.error('❌  Missing env var DATABASE_URL');
   process.exit(1);
 }
 
-// ─── POSTGRES POOL ───────────────────────────────────────────────────────────────
-const pool = new Pool({
-  connectionString: DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
-});
-pool.on('error', err => {
-  console.error('🔴 Unexpected Postgres client error:', err);
-  process.exit(-1);
-});
+// ─── BUILD REACT (only if there's no build folder) ─────────────────────────────
+const clientBuildPath = path.join(__dirname, '../frontend/build');
+if (!require('fs').existsSync(clientBuildPath)) {
+  console.log('🏗  No build folder found – running React build…');
+  // This runs: npm install --prefix ../frontend && npm run build --prefix ../frontend
+  const result = spawnSync('npm', [
+    'install',
+    '--prefix',
+    '../frontend'
+  ], { stdio: 'inherit' });
+  if (result.status !== 0) process.exit(result.status);
 
-// ─── EXPRESS SETUP ───────────────────────────────────────────────────────────────
+  const buildResult = spawnSync('npm', [
+    'run',
+    'build',
+    '--prefix',
+    '../frontend'
+  ], { stdio: 'inherit' });
+  if (buildResult.status !== 0) process.exit(buildResult.status);
+}
+
+// ─── MONGOOSE ──────────────────────────────────────────────────────────────────
+mongoose
+  .connect(MONGO_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+  })
+  .then(() => console.log('✅  MongoDB Connected'))
+  .catch(err => {
+    console.error('❌  MongoDB connection error:', err);
+    process.exit(1);
+  });
+
+// ─── EXPRESS SETUP ─────────────────────────────────────────────────────────────
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ─── HEALTH CHECK ────────────────────────────────────────────────────────────────
-app.get('/health', (_, res) => res.send('OK'));
-
-// ─── MULTER UPLOAD SETUP ─────────────────────────────────────────────────────────
-const UPLOAD_DIR = path.join(__dirname, 'uploads');
+// ─── MULTER FOR IMAGE UPLOADS ─────────────────────────────────────────────────
+const uploadDir = path.join(__dirname, 'uploads');
 const storage = multer.diskStorage({
-  destination: UPLOAD_DIR,
+  destination: uploadDir,
   filename: (_, file, cb) => {
-    cb(null, `upload_${Date.now()}${path.extname(file.originalname)}`);
+    const name = `uploaded_${Date.now()}${path.extname(file.originalname)}`;
+    cb(null, name);
   }
 });
 const upload = multer({ storage });
 
-// ─── PREDICTION ENDPOINT ─────────────────────────────────────────────────────────
+// ─── PREDICTION ENDPOINT ──────────────────────────────────────────────────────
+const Prediction = mongoose.model('Prediction', new mongoose.Schema({
+  imagePath: String,
+  result:    String,
+  timestamp: { type: Date, default: Date.now }
+}));
+
 app.post('/upload', upload.single('image'), (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No file uploaded' });
   }
   const imgPath = req.file.path;
-
-  // Call your YOLO script
-  const py = spawn('python3', ['pred.py', imgPath]);
-  let output = '';
-  py.stdout.on('data', chunk => (output += chunk.toString()));
-  py.stderr.on('data', chunk => console.error('🔴 Python error:', chunk.toString()));
-
-  py.on('close', async code => {
-    if (code !== 0) {
-      return res.status(500).json({ error: `Prediction script exited with code ${code}` });
-    }
-    const result = output.replace(/^Detections:\s*/i, '').trim();
-
-    // Store in Postgres
-    try {
-      const { rows } = await pool.query(
-        `INSERT INTO predictions (image_path, result)
-         VALUES ($1, $2)
-         RETURNING id, image_path, result, timestamp`,
-        [imgPath, result]
-      );
-      res.json(rows[0]);
-    } catch (err) {
-      console.error('🔴 DB insert error:', err);
+  const py = spawnSync('python', ['pred.py', imgPath]);
+  if (py.status !== 0) {
+    console.error(py.stderr.toString());
+    return res.status(500).json({ error: 'Python error' });
+  }
+  const cleaned = py.stdout.toString().replace(/^Detections:\s*/i, '').trim();
+  Prediction.create({ imagePath: imgPath, result: cleaned })
+    .then(record => res.json({ message: 'Prediction saved', data: record }))
+    .catch(err => {
+      console.error('DB save error:', err);
       res.status(500).json({ error: 'Failed to save prediction' });
-    }
-  });
+    });
 });
 
-// ─── SERVE REACT IN PRODUCTION ───────────────────────────────────────────────────
-if (process.env.NODE_ENV === 'production') {
-  const clientBuild = path.resolve(__dirname, '../frontend/build');
-  app.use(express.static(clientBuild));
-  app.get('*', (_, res) => {
-    res.sendFile(path.join(clientBuild, 'index.html'));
-  });
-}
+// ─── SERVE React FRONTEND ──────────────────────────────────────────────────────
+app.use(express.static(clientBuildPath));
+app.get('*', (req, res) => {
+  res.sendFile(path.join(clientBuildPath, 'index.html'));
+});
 
-// ─── START SERVER ────────────────────────────────────────────────────────────────
+// ─── START ─────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
-  console.log(`🚀 Server listening on port ${PORT}`);
+  console.log(`🚀  Server listening on port ${PORT}`);
 });
