@@ -1,4 +1,8 @@
-/* White square box */
+import React, { useState, useEffect } from "react";
+import axios from "axios";
+import "./PredictPage.css";    // ← your new stylesheet
+
+
 .white-box {
   background: linear-gradient(to bottom, white, #c3d8ee);
   width: 90vw;
