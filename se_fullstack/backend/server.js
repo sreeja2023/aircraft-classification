@@ -6,34 +6,16 @@ const { spawn } = require('child_process');
 const mongoose = require('mongoose');
 const path = require('path');
 const cors = require('cors');
+const fs = require('fs');
 
 // ─── Environment ───────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/yolo_predictions';
 
-// ─── MongoDB Setup ─────────────────────────────────────────────────────────────
-mongoose.connect(MONGO_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-})
-.then(() => console.log(`MongoDB connected: ${MONGO_URI}`))
-.catch(err => console.error('MongoDB connection error:', err));
-
-// ─── Express App Setup ─────────────────────────────────────────────────────────
-const app = express();
-app.use(cors());
-app.use(express.json());
-
-// ─── Multer File Upload Setup ──────────────────────────────────────────────────
-const uploadDir = path.join(__dirname, 'uploads');
-const storage = multer.diskStorage({
-  destination: uploadDir,
-  filename: (req, file, cb) => {
-    const filename = `uploaded_${Date.now()}${path.extname(file.originalname)}`;
-    cb(null, filename);
-  }
-});
-const upload = multer({ storage });
+// ─── MongoDB Connection ─────────────────────────────────────────────────────────
+mongoose.connect(MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
+  .then(() => console.log(`MongoDB connected: ${MONGO_URI}`))
+  .catch(err => console.error('MongoDB connection error:', err));
 
 // ─── Mongoose Schema & Model ───────────────────────────────────────────────────
 const predictionSchema = new mongoose.Schema({
@@ -42,6 +24,25 @@ const predictionSchema = new mongoose.Schema({
   timestamp: { type: Date, default: Date.now }
 });
 const Prediction = mongoose.model('Prediction', predictionSchema);
+
+// ─── Ensure Uploads Directory Exists ───────────────────────────────────────────
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir);
+
+// ─── Express App Setup ─────────────────────────────────────────────────────────
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+// ─── Multer File Upload Setup ──────────────────────────────────────────────────
+const storage = multer.diskStorage({
+  destination: uploadsDir,
+  filename: (req, file, cb) => {
+    const filename = `uploaded_${Date.now()}${path.extname(file.originalname)}`;
+    cb(null, filename);
+  }
+});
+const upload = multer({ storage });
 
 // ─── Prediction Endpoint ───────────────────────────────────────────────────────
 app.post('/upload', upload.single('image'), (req, res) => {
@@ -53,7 +54,7 @@ app.post('/upload', upload.single('image'), (req, res) => {
   const py = spawn('python', ['pred.py', imgPath]);
 
   let output = '';
-  py.stdout.on('data', data => { output += data.toString(); });
+  py.stdout.on('data', data => output += data.toString());
   py.stderr.on('data', data => console.error(`Python error: ${data}`));
 
   py.on('close', async code => {
@@ -61,6 +62,7 @@ app.post('/upload', upload.single('image'), (req, res) => {
       console.error(`Python process exited with code ${code}`);
       return res.status(500).json({ error: `Prediction script error (code ${code})` });
     }
+
     const resultText = output.replace(/^Detections:\s*/i, '').trim();
     try {
       const record = await Prediction.create({ imagePath: imgPath, result: resultText });
@@ -76,8 +78,6 @@ app.post('/upload', upload.single('image'), (req, res) => {
 if (process.env.NODE_ENV === 'production') {
   const clientBuildPath = path.join(__dirname, '../frontend/build');
   app.use(express.static(clientBuildPath));
-
-  // All other GET requests not handled before will return React's index.html
   app.get('/*', (req, res) => {
     res.sendFile(path.join(clientBuildPath, 'index.html'));
   });
