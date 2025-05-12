@@ -3,11 +3,11 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    // install deps in both sub-projects
+ 
     "install:all": "npm install --prefix backend && npm install --prefix frontend",
-    // build the React app
+
     "build":      "npm run build --prefix frontend",
-    // start your Express server
+
     "start":      "node backend/server.js"
   }
 }
