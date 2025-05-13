@@ -12,86 +12,79 @@ export default function PredictPage() {
 
   useEffect(() => {
     return () => {
-      if (preview) {
-        URL.revokeObjectURL(preview);
-      }
-      history.forEach(entry => {
-        URL.revokeObjectURL(entry.image);
-      });
+      // Cleanup previews on unmount
+      if (preview) URL.revokeObjectURL(preview);
+      history.forEach(entry => URL.revokeObjectURL(entry.image));
     };
-    // only run on unmount
-  }, []); 
+    // Only run on unmount
+  }, []);
 
-  const validateFile = (file) => {
+  const validateFile = file => {
     const maxSize = 5 * 1024 * 1024; // 5MB
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg'];
+    const allowed = ['image/jpeg', 'image/png', 'image/jpg'];
 
-    if (!allowedTypes.includes(file.type)) {
-      throw new Error('Please upload a valid image file (JPEG, PNG)');
+    if (!allowed.includes(file.type)) {
+      throw new Error('Upload only JPEG or PNG images.');
     }
     if (file.size > maxSize) {
-      throw new Error('File size should be less than 5MB');
+      throw new Error('Image must be smaller than 5 MB.');
     }
   };
 
-  const handleFileChange = (e) => {
-    const selectedFile = e.target.files[0];
-    if (selectedFile) {
-      try {
-        validateFile(selectedFile);
-        setFile(selectedFile);
-        setError(null);
-        const previewUrl = URL.createObjectURL(selectedFile);
-        setPreview(previewUrl);
-      } catch (err) {
-        setError(err.message);
-        setFile(null);
-        setPreview(null);
-      }
+  const handleFileChange = e => {
+    const f = e.target.files[0];
+    if (!f) return;
+
+    try {
+      validateFile(f);
+      setFile(f);
+      setError(null);
+      setPreview(URL.createObjectURL(f));
+    } catch (err) {
+      setError(err.message);
+      setFile(null);
+      setPreview(null);
     }
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async e => {
     e.preventDefault();
     if (!file) {
-      setError('Please select a file first');
+      setError('Please select an image first.');
       return;
     }
 
     setLoading(true);
     setError(null);
 
-    const formData = new FormData();
-    formData.append('image', file);
+    const form = new FormData();
+    form.append('image', file);
 
     try {
-      const response = await axios.post(
-        '/upload',
-        formData,
-        { headers: { 'Content-Type': 'multipart/form-data' } }
-      );
+      // POST to `/upload` and let CRA proxy it to your backend on port 5000
+      const { data } = await axios.post('/upload', form, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
 
-      if (response.data.message === 'Prediction saved') {
+      if (data.message === 'Prediction saved') {
         const imageUrl = URL.createObjectURL(file);
-        const newEntry = {
+        const entry = {
           image: imageUrl,
-          label: response.data.data.result,
+          label: data.data.result,
           timestamp: new Date().toLocaleString(),
         };
-        setHistory(prev => [newEntry, ...prev]);
-        setPredictionResult(response.data.data.result);
+        setHistory(prev => [entry, ...prev]);
+        setPredictionResult(data.data.result);
       } else {
-        throw new Error(response.data.message || 'Prediction failed');
+        throw new Error(data.message || 'Unknown server response');
       }
     } catch (err) {
       if (err.code === 'ERR_NETWORK') {
-        setError('Cannot connect to the server. Please make sure the backend server is running.');
+        setError('Cannot connect to the server. Is it running on port 5000?');
       } else if (err.response) {
         setError(`Server error: ${err.response.data?.message || err.response.statusText}`);
-      } else if (err.request) {
-        setError('No response from server. Please check if the server is running.');
       } else {
-        setError(err.message || 'An unexpected error occurred');
+        setError(err.message);
       }
     } finally {
       setLoading(false);
@@ -107,7 +100,6 @@ export default function PredictPage() {
         backgroundImage: 'url("/img4.jpg")',
         backgroundSize: 'cover',
         backgroundPosition: 'center',
-        backgroundRepeat: 'no-repeat',
         minHeight: '100vh',
         padding: '2rem 0',
       }}
@@ -116,9 +108,11 @@ export default function PredictPage() {
         <div className="box-header logo-only">
           <div className="logo">✈️ Aerial Vehicle Detector</div>
         </div>
+
         <div className="box-body">
           <h1>Snap. Upload. Detect</h1>
           <p>Upload an image to classify it as Military, Civilian, UAV or Unknown</p>
+
           <form onSubmit={handleSubmit} className="upload-form">
             <label htmlFor="file-upload" className="drop-box">
               {preview ? (
