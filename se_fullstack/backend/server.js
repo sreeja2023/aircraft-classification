@@ -7,7 +7,7 @@ const { spawn } = require('child_process');
 const { Pool } = require('pg');
 
 // ─── Environment ───────────────────────────────────────────────────────────────
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 10000;
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {
   console.error('✖️  DATABASE_URL environment variable is required');
