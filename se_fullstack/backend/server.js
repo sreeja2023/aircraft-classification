@@ -1,105 +1,100 @@
 // server.js
 require('dotenv').config();
-const path = require('path');
 const express = require('express');
+const path = require('path');
 const multer = require('multer');
-const { spawn } = require('child_process');
+const cors = require('cors');
 const { Pool } = require('pg');
 
-// ─── Environment ───────────────────────────────────────────────────────────────
-const PORT = process.env.PORT || 5000;
-const DATABASE_URL = process.env.DATABASE_URL;
-if (!DATABASE_URL) {
-  console.error('✖️  DATABASE_URL environment variable is required');
+const app = express();
+
+// ─── MIDDLEWARE ────────────────────────────────────────────────────────────────
+app.use(cors());
+app.use(express.json());
+
+// ─── DATABASE ──────────────────────────────────────────────────────────────────
+// Make sure you've set DATABASE_URL in Render's Environment settings!
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) {
+  console.error('❌ DATABASE_URL environment variable is required');
   process.exit(1);
 }
 
-// ─── Postgres Setup ────────────────────────────────────────────────────────────
+// On Render, SSL is required by default for Postgres
 const pool = new Pool({
-  connectionString: DATABASE_URL,
+  connectionString,
   ssl: {
     rejectUnauthorized: false
   }
 });
 
-async function initDb() {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS predictions (
-      id SERIAL PRIMARY KEY,
-      image_path TEXT NOT NULL,
-      result TEXT NOT NULL,
-      timestamp TIMESTAMPTZ DEFAULT now()
-    );
-  `);
-  console.log('✔️  Postgres table ready');
-}
-
-// ─── Express App ───────────────────────────────────────────────────────────────
-const app = express();
-app.use(express.json());
-app.use(require('cors')());
-
-// ─── Multer Setup ──────────────────────────────────────────────────────────────
-const uploadDir = path.join(__dirname, 'uploads');
-const storage = multer.diskStorage({
-  destination: uploadDir,
-  filename: (_, file, cb) => {
-    const name = 'uploaded_' + Date.now() + path.extname(file.originalname);
-    cb(null, name);
-  }
-});
-const upload = multer({ storage });
-
-// ─── Prediction Route ──────────────────────────────────────────────────────────
-app.post('/upload', upload.single('image'), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: 'No file uploaded' });
-  }
-
-  const imgPath = req.file.path;
-  const py = spawn('python', ['pred.py', imgPath]);
-
-  let output = '';
-  py.stdout.on('data', data => output += data.toString());
-  py.stderr.on('data', data => console.error(`🐍 Python error: ${data}`));
-
-  py.on('close', async code => {
-    if (code !== 0) {
-      return res.status(500).json({ error: `Python exited with code ${code}` });
-    }
-    const cleaned = output.replace(/^Detections:\s*/i, '').trim();
-    try {
-      const { rows } = await pool.query(
-        `INSERT INTO predictions(image_path, result)
-         VALUES($1, $2)
-         RETURNING *;`,
-        [imgPath, cleaned]
+// Test & create a table if missing
+(async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS predictions (
+        id SERIAL PRIMARY KEY,
+        filename TEXT NOT NULL,
+        label TEXT NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
       );
-      res.json({ message: 'Prediction saved', data: rows[0] });
-    } catch (err) {
-      console.error('💾 DB insert error:', err);
-      res.status(500).json({ error: 'Failed to save prediction' });
+    `);
+    console.log('✅ Postgres table ready');
+  } catch (err) {
+    console.error('❌ Postgres error:', err);
+    process.exit(1);
+  }
+})();
+
+// ─── FILE UPLOAD ────────────────────────────────────────────────────────────────
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, path.join(__dirname, 'uploads')),
+    filename: (req, file, cb) => {
+      // give each file a timestamp‐prefixed name
+      const name = `${Date.now()}__${file.originalname}`;
+      cb(null, name);
     }
-  });
+  }),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
 });
 
-// ─── Serve React in Production ───────────────────────────────────────────────────
-if (process.env.NODE_ENV === 'production') {
-  const clientBuild = path.join(__dirname, '../frontend/build');
-  app.use(express.static(clientBuild));
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(clientBuild, 'index.html'));
-  });
-}
-
-// ─── Start Server ───────────────────────────────────────────────────────────────
-initDb()
-  .then(() => {
-    app.listen(PORT, () => {
-      console.log(`🚀 Server listening on port ${PORT}`);
+// ─── API ROUTES ────────────────────────────────────────────────────────────────
+app.post('/upload', upload.single('image'), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ message: 'No file uploaded' });
+  }
+  // TODO: integrate your real ML model here instead of "dummy"
+  const fakeLabel = ['Military','Civilian','UAV','Unknown'][Math.floor(Math.random()*4)];
+  
+  try {
+    await pool.query(
+      'INSERT INTO predictions(filename,label) VALUES($1,$2)',
+      [req.file.filename, fakeLabel]
+    );
+    return res.json({
+      message: 'Prediction saved',
+      data: { result: fakeLabel }
     });
-  })
-  .catch(err => {
-    console.error('❌ Failed to initialize database:', err);
-    process.exit(1);
-  });
+  } catch (err) {
+    console.error('DB insert error:', err);
+    return res.status(500).json({ message: 'Database error' });
+  }
+});
+
+// ─── SERVE REACT APP ───────────────────────────────────────────────────────────
+// point to your React build output
+const buildPath = path.join(__dirname, '../frontend/build');
+app.use(express.static(buildPath));
+
+// all remaining requests return index.html
+app.get('*', (req, res) => {
+  res.sendFile(path.join(buildPath, 'index.html'));
+});
+
+// ─── START ─────────────────────────────────────────────────────────────────────
+// Render will set process.env.PORT for you. Locally it'll default to 5000.
+const PORT = parseInt(process.env.PORT, 10) || 5000;
+app.listen(PORT, () => {
+  console.log(`🚀 Server listening on port ${PORT}`);
+});
