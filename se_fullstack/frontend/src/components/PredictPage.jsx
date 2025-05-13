@@ -15,13 +15,12 @@ export default function PredictPage() {
       if (preview) {
         URL.revokeObjectURL(preview);
       }
-      // Only revoke object URLs for history on unmount, not on every update
       history.forEach(entry => {
         URL.revokeObjectURL(entry.image);
       });
     };
-    // eslint-disable-next-line
-  }, []); // Only run on unmount
+    // only run on unmount
+  }, []); 
 
   const validateFile = (file) => {
     const maxSize = 5 * 1024 * 1024; // 5MB
@@ -30,7 +29,6 @@ export default function PredictPage() {
     if (!allowedTypes.includes(file.type)) {
       throw new Error('Please upload a valid image file (JPEG, PNG)');
     }
-
     if (file.size > maxSize) {
       throw new Error('File size should be less than 5MB');
     }
@@ -43,7 +41,6 @@ export default function PredictPage() {
         validateFile(selectedFile);
         setFile(selectedFile);
         setError(null);
-        // Create preview URL
         const previewUrl = URL.createObjectURL(selectedFile);
         setPreview(previewUrl);
       } catch (err) {
@@ -63,33 +60,32 @@ export default function PredictPage() {
 
     setLoading(true);
     setError(null);
+
     const formData = new FormData();
     formData.append('image', file);
 
     try {
-      const response = await axios.post('http://localhost:5000/upload', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        }
-      });
+      const response = await axios.post(
+        '/upload',
+        formData,
+        { headers: { 'Content-Type': 'multipart/form-data' } }
+      );
 
-      if (response.data.message === "Prediction saved") {
-        // Create a new object URL for this prediction
+      if (response.data.message === 'Prediction saved') {
         const imageUrl = URL.createObjectURL(file);
         const newEntry = {
           image: imageUrl,
           label: response.data.data.result,
           timestamp: new Date().toLocaleString(),
         };
-        // Add new entry to the beginning of history array
-        setHistory(prevHistory => [newEntry, ...prevHistory]);
+        setHistory(prev => [newEntry, ...prev]);
         setPredictionResult(response.data.data.result);
       } else {
         throw new Error(response.data.message || 'Prediction failed');
       }
     } catch (err) {
       if (err.code === 'ERR_NETWORK') {
-        setError('Cannot connect to the server. Please make sure the backend server is running on port 5000.');
+        setError('Cannot connect to the server. Please make sure the backend server is running.');
       } else if (err.response) {
         setError(`Server error: ${err.response.data?.message || err.response.statusText}`);
       } else if (err.request) {
@@ -120,11 +116,9 @@ export default function PredictPage() {
         <div className="box-header logo-only">
           <div className="logo">✈️ Aerial Vehicle Detector</div>
         </div>
-
         <div className="box-body">
           <h1>Snap. Upload. Detect</h1>
           <p>Upload an image to classify it as Military, Civilian, UAV or Unknown</p>
-
           <form onSubmit={handleSubmit} className="upload-form">
             <label htmlFor="file-upload" className="drop-box">
               {preview ? (
@@ -152,16 +146,14 @@ export default function PredictPage() {
             </button>
           </form>
 
-          {error && (
-            <div className="error-message">
-              {error}
-            </div>
-          )}
+          {error && <div className="error-message">{error}</div>}
 
           {predictionResult && (
             <div className="prediction-result" style={{ margin: '0 auto' }}>
               <h3>Prediction Result</h3>
-              <p className="result-text">{predictionResult.split('\n').filter(Boolean).pop()}</p>
+              <p className="result-text">
+                {predictionResult.split('\n').filter(Boolean).pop()}
+              </p>
             </div>
           )}
         </div>
@@ -180,8 +172,8 @@ export default function PredictPage() {
                 </tr>
               </thead>
               <tbody>
-                {history.map((entry, index) => (
-                  <tr key={index}>
+                {history.map((entry, idx) => (
+                  <tr key={idx}>
                     <td>
                       <img src={entry.image} alt="Prediction" className="history-img" />
                     </td>
