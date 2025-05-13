@@ -1,19 +1,19 @@
-// server.js
 require('dotenv').config();
 const path = require('path');
 const express = require('express');
-const multer = require('multer');
 const cors = require('cors');
+const multer = require('multer');
 const { Pool } = require('pg');
 
 const app = express();
+const PORT = process.env.PORT || 5000;
+const CLIENT_BUILD_PATH = path.join(__dirname, '../frontend/build');
 
-// --- 1) DATABASE SETUP ---
+// --- Postgres setup ---
 if (!process.env.DATABASE_URL) {
-  console.error('ERROR: DATABASE_URL environment variable is required');
+  console.error('❌ DATABASE_URL environment variable is required');
   process.exit(1);
 }
-
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: {
@@ -21,71 +21,68 @@ const pool = new Pool({
   }
 });
 
-// On startup, ensure our table exists
-const initDb = async () => {
+// Make sure the table exists
+;(async () => {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS predictions (
       id SERIAL PRIMARY KEY,
-      label TEXT NOT NULL,
-      created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT (NOW() AT TIME ZONE 'UTC')
+      filename TEXT NOT NULL,
+      result TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `);
   console.log('✅ Postgres table ready');
-};
-initDb().catch(err => {
-  console.error('Failed to initialize database:', err);
+})().catch(err => {
+  console.error('Postgres setup error:', err);
   process.exit(1);
 });
 
-// --- 2) MIDDLEWARE ---
+// --- Middleware ---
 app.use(cors());
 app.use(express.json());
+app.use(express.static(CLIENT_BUILD_PATH));
 
-// Multer for handling multipart/form-data (file upload)
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 } // 5MB max
+// Multer setup (storing uploads in memory)
+const upload = multer({ storage: multer.memoryStorage() });
+
+// --- Health check ---
+app.get('/health', (req, res) => {
+  res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
-// --- 3) UPLOAD ENDPOINT ---
+// --- File upload & prediction stub ---
 app.post('/upload', upload.single('image'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ message: 'No file uploaded' });
     }
 
-    // TODO: Replace this stub with your real ML prediction logic
-    const stubLabel = ['Military','Civilian','UAV','Unknown'][
-      Math.floor(Math.random() * 4)
-    ];
+    // TODO: run your ML model here on req.file.buffer
+    // For now we’ll just pick a dummy label:
+    const dummyResult = 'Unknown';
 
-    // Save prediction to DB
+    // Store in Postgres
     await pool.query(
-      'INSERT INTO predictions(label) VALUES($1)',
-      [ stubLabel ]
+      `INSERT INTO predictions(filename, result) VALUES($1,$2)`,
+      [req.file.originalname, dummyResult]
     );
 
-    return res.json({
+    res.json({
       message: 'Prediction saved',
-      data: { result: stubLabel }
+      data: { result: dummyResult }
     });
   } catch (err) {
     console.error('Upload error:', err);
-    return res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
-// --- 4) STATIC FILE SERVING (React build) ---
-const buildPath = path.join(__dirname, '../frontend/build');
-app.use(express.static(buildPath));
-
-// Always return index.html for any other route (so React Router works)
+// --- Serve React for all other routes ---
 app.get('*', (req, res) => {
-  res.sendFile(path.join(buildPath, 'index.html'));
+  res.sendFile(path.join(CLIENT_BUILD_PATH, 'index.html'));
 });
 
-// --- 5) START SERVER ---
-const PORT = parseInt(process.env.PORT, 10) || 5000;
+// --- Start ---
 app.listen(PORT, () => {
   console.log(`🚀 Server listening on port ${PORT}`);
 });
