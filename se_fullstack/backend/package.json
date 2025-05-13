@@ -1,8 +1,4 @@
 {
-  "name": "aircraft-classification-backend",
-  "version": "1.0.0",
-  "private": true,
-  "main": "server.js",
   "scripts": {
     "postinstall": "npm install --prefix ../frontend && npm run build --prefix ../frontend",
     "start": "node server.js"
