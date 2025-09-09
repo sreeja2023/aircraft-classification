@@ -27,8 +27,8 @@ An **AI-powered computer vision system** that leverages deep learning to automat
 
 ### 1. Clone the repository  
 ```bash
-git clone https://github.com/Vyshhh/AerialVehicle_Detection.git
-cd AerialVehicle_Detection
+git clone https://github.com/sreeja2023/aircraft-classification.git
+cd aircraft-classification
 ```
 ### 2. setting backend up
 ```bash
